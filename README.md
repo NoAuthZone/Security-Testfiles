@@ -1,60 +1,92 @@
-# FalconEYE-Testdateien
+# Security-Testfiles
 
-26 Testdateien in 11 Sprachen mit **43 absichtlich eingebauten Schwachstellen**.
-Zu jeder Sprache gibt es mindestens eine verwundbare und eine sichere Datei.
-Die sicheren Dateien lösen dieselben Aufgaben korrekt und prüfen auf Fehlalarme.
+Intentionally vulnerable sample code with secure counterparts for testing and comparing security scanners: SAST tools, LLM-based code analysis, secret scanners, and linters.
 
-**Nur zum Testen, niemals produktiv verwenden.** Alle Schlüssel sind Platzhalter.
+> [!WARNING]
+> These files contain **deliberate security vulnerabilities**. Use them for testing only. Never run, deploy, or reuse them as a template. All keys, hosts, and credentials are placeholders.
 
-## Warum ohne Kommentare?
+## Concept
 
-Der Code enthält keine Hinweise wie „VULNERABLE“ und hat neutrale Dateinamen.
-Das LLM liest Kommentare und Dateinamen mit und würde sonst die Beschriftung
-finden statt der Lücke. Die Erwartungen stehen deshalb in `expected.yaml`,
-die FalconEYE nicht scannt. `tests/test_fixtures.py` stellt sicher, dass das so bleibt.
+- Every language has a **vulnerable** file and a **secure** file. The secure file solves the same tasks correctly. This lets you measure what a tool finds (recall) **and** how many false positives it produces.
+- **No hints in the code:** no comments such as "VULNERABLE" and neutral file names. A tool, especially an LLM, should find the flaw, not the label.
+- The expected findings (file, line, category) are listed in [`expected.yaml`](./expected.yaml). Exclude this file when scanning.
 
-## Inhalt
+## Contents
 
-| Sprache | Verwundbare Datei | Schwachstellen | Sichere Datei |
-|---|---|---|---|
-| C | `parser.c` | Format String, 2× Buffer Overflow (`strcpy`), Command Injection | `config.c` |
-| C++ | `session.cpp` | Integer Overflow bei Allokation, Buffer Overflow (`memcpy`), Use-after-free | `cache.cpp` |
-| Dart | `api_client.dart` | Hartkodierter API-Key, TLS-Prüfung deaktiviert, SQL-Injection, Command Injection | `sync_client.dart` |
-| Go | `handlers.go` | SQL-Injection, Command Injection, SSRF | `api.go` |
-| Java | `ReportController.java` | SQL-Injection, Path Traversal, XXE, MD5 für Passwörter | `InvoiceController.java` |
-| JavaScript | `comments.js` | Prototype Pollution, XSS, Command Injection | `newsletter.js` |
-| PHP | `profile.php` | SQL-Injection, XSS, `unserialize` auf Cookie, File Inclusion | `settings.php` |
-| Python | `inventory_service.py` | SQL-Injection, Command Injection (`shell=True`), `pickle.loads` | `billing_service.py` |
-| Ruby | `orders_controller.rb` | SQL-Injection, Command Injection, `YAML.unsafe_load`, Open Redirect | `products_controller.rb` |
-| Rust | `server.rs` | SQL-Injection, Path Traversal, Command Injection | `store.rs` |
-| TypeScript | `server.ts`, `Profile.tsx`, `fetcher.mts`, `legacy.cts` | SQL, Command, XSS, Open Redirect, Secret, SSRF, Path Traversal, `eval` | `accounts.ts`, `types.d.ts` |
+| Language | Vulnerable | Vulnerabilities | Secure |
+| --- | --- | --- | --- |
+| C | `c/parser.c` | Format string, 2× buffer overflow (`strcpy`), command injection | `c/config.c` |
+| C++ | `cpp/session.cpp` | Integer overflow in allocation, buffer overflow (`memcpy`), use-after-free | `cpp/cache.cpp` |
+| Dart | `dart/api_client.dart` | Hardcoded API key, disabled TLS verification, SQL injection, command injection | `dart/sync_client.dart` |
+| Go | `go/handlers.go` | SQL injection, command injection, SSRF | `go/api.go` |
+| Java | `java/ReportController.java` | SQL injection, path traversal, XXE, MD5 for passwords | `java/InvoiceController.java` |
+| JavaScript | `javascript/comments.js` | Prototype pollution, XSS, command injection | `javascript/newsletter.js` |
+| PHP | `php/profile.php` | SQL injection, XSS, `unserialize` on cookie, file inclusion | `php/settings.php` |
+| Python | `python/inventory_service.py` | SQL injection, command injection (`shell=True`), `pickle.loads` | `python/billing_service.py` |
+| Ruby | `ruby/orders_controller.rb` | SQL injection, command injection, `YAML.unsafe_load`, open redirect | `ruby/products_controller.rb` |
+| Rust | `rust/server.rs` | SQL injection, path traversal, command injection | `rust/store.rs` |
+| TypeScript | `typescript/server.ts`, `Profile.tsx`, `fetcher.mts`, `legacy.cts` | SQL, command, XSS, open redirect, secret, SSRF, path traversal, `eval` | `typescript/accounts.ts`, `types.d.ts` |
 
-Die genauen Zeilen stehen in `expected.yaml`.
+In total: **26 files in 11 languages with 43 vulnerabilities**. The TypeScript files deliberately cover every extension (`.ts`, `.tsx`, `.mts`, `.cts`, `.d.ts`) to also test a tool's file discovery.
 
-## Nutzung
+### Categories in `expected.yaml`
+
+`sql` · `command` · `code_exec` · `deserialization` · `xss` · `path` · `ssrf` · `redirect` · `secret` · `xxe` · `weak_crypto` · `tls` · `prototype_pollution` · `format_string` · `buffer_overflow` · `integer_overflow` · `use_after_free`
+
+## Usage with any tool
+
+Clone the repository and point your tool at the directory, for example:
 
 ```bash
-# 1. Ohne LLM: Erkennung, Plugin-Zuordnung, Parsing
-python scripts/check_fixtures.py
-pytest -q tests
+git clone https://github.com/NoAuthZone/Security-Testfiles.git
+cd Security-Testfiles
 
-# 2. Mit LLM: Scan als JSON
-falconeye scan tests/fixtures -o json --output-file report.json --force-reindex
-
-# 3. Auswertung
-python scripts/evaluate_fixtures.py report.json
-python scripts/evaluate_fixtures.py report.json --json                     # nur Kennzahlen
-python scripts/evaluate_fixtures.py report.json --min-recall 0.7 --max-false-positives 3
+semgrep scan --config auto --exclude expected.yaml .
+gitleaks detect --no-git --source .
+trivy fs --scanners secret .
 ```
 
-Die Auswertung zeigt pro Sprache Treffer, korrekte Kategorien, Fehlalarme und
-unerwartete Findings, danach alle übersehenen Lücken und Fehlalarme im Detail.
-Speichere die JSON-Kennzahlen nach jedem Lauf, dann siehst du, ob ein neuer
-Prompt oder ein anderes Modell besser oder schlechter abschneidet.
+Then compare the results with `expected.yaml`:
 
-## Neue Testdatei hinzufügen
+- **Hit:** a finding in the correct file, within ± `tolerance` lines (default: 3) of the expected line.
+- **False positive:** any finding in a secure file (`findings: []`).
+- **Additional:** extra findings in vulnerable files. These may be legitimate and are therefore counted separately.
 
-1. Datei unter `tests/fixtures/<sprache>/` ablegen, ohne Hinweiskommentare,
-   mit neutralem Namen.
-2. Eintrag in `expected.yaml` mit Zeile, Kategorie und einem Textausschnitt der Zeile.
-3. `pytest -q tests` prüft Syntax, Zeilen und Hinweisfreiheit.
+## Automated evaluation (optional)
+
+`scripts/evaluate_fixtures.py` compares a report with `expected.yaml` and prints recall, correct categories, and false positives per language. It only needs Python 3 and PyYAML.
+
+```bash
+pip install pyyaml
+python scripts/evaluate_fixtures.py report.json --fixtures .
+python scripts/evaluate_fixtures.py report.json --fixtures . --json          # metrics only
+python scripts/evaluate_fixtures.py report.json --fixtures . --min-recall 0.7 --max-false-positives 3
+```
+
+The script expects a report in the following format. [FalconEYE-NG](https://github.com/NoAuthZone/FalconEYE-NG) produces it directly with `falconeye scan . -o json --output-file report.json`. Results from other tools can be converted with a few lines of code:
+
+```json
+{
+  "findings": [
+    {
+      "issue": "SQL injection via string concatenation",
+      "location": { "file_path": "java/ReportController.java", "line_start": 33, "line_end": 33 }
+    }
+  ]
+}
+```
+
+A category counts as correct if the `issue` text contains a matching keyword (see `CATEGORY_KEYWORDS` in the script). With `--min-recall` or `--max-false-positives`, the script exits with code 1 if the threshold is missed, which makes it usable in CI.
+
+`scripts/check_fixtures.py` is specific to FalconEYE-NG: it checks without an LLM whether FalconEYE detects, maps, and parses every file. It requires FalconEYE-NG to be installed.
+
+## Adding a test file
+
+1. Place the file in `<language>/` without hint comments and with a neutral name (avoid `safe`, `vuln`, `secure`, `bad`, `good`, and similar).
+2. Add an entry to `expected.yaml` with the line, category, and a text snippet of that line (`contains`). Secure files get `findings: []`.
+3. For every new language, also add a secure counterpart.
+
+## Notes
+
+- The placeholder keys (`sk_live_…FAKEKEYFORTESTS`, `AIzaSyD-FAKE-KEY…`) intentionally follow the format of real keys so that secret scanners trigger. GitHub Secret Scanning may flag them as well.
+- The files are short, realistic snippets, not runnable applications.
